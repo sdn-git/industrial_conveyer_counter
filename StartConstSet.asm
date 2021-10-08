@@ -1,5 +1,5 @@
 StartConstSet:
-	Delay_1:
+Delay_1:
 	inc xtmp
 	cpi xtmp,0xff
 	brne Delay_1
