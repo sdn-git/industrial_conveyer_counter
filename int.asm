@@ -18,227 +18,194 @@
 	rjmp	ACI_INT
 	rjmp	TWI_INT
 	rjmp	SPM_INT
-;------------------------------------------------------------------------------------------------
+
 EXT_INT0:
 	reti
-;------------------------------------------------------------------------------------------------
+
 EXT_INT1:
 	reti
-;------------------------------------------------------------------------------------------------
+
 OUT_COMPARE2:
 	reti
-;------------------------------------------------------------------------------------------------
-OVF_T2:
-/*Push_All
 
-lds tmp, S_TimerCntL	
-lds tmp2,S_TimerCntH
-	lsr tmp2					;
-	ror tmp
-	lsr tmp2					;
-	ror tmp
-	lsr tmp2					;
-	ror tmp
-	lsr tmp2					;
-	ror tmp
-	lsr tmp2					;
-	ror tmp
-	lsr tmp2					;
-	ror tmp
-	lsr tmp2					;
-	ror tmp
-	lsr tmp2					;
-	ror tmp
-in tmp,TCNT1L
-rcall TXD
-Pop_All*/
+OVF_T2:
 	reti
-;------------------------------------------------------------------------------------------------
+
 ICP_INT1:
 	reti
-;------------------------------------------------------------------------------------------------
+
 OC1A_INT:
-PUSH_PSW
-    sbr R_Flags,m_MinGone
-POP_PSW
+	PUSH_PSW
+    	sbr 	R_Flags,m_MinGone
+	POP_PSW
 	reti
-;------------------------------------------------------------------------------------------------
+
 OC1B_INT:
-PUSH_PSW
-	cbi PORTB,Const	
+	PUSH_PSW
+	cbi 	PORTB,Const	
 	#warning
-MARKER_FLASH PIND,PORTD,4
-	sbr R_Flags,m_MaxGone
-;	sbr R_Flags,m_Stop
+	MARKER_FLASH PIND,PORTD,4
+	sbr	 R_Flags,m_MaxGone
+	sbr 	R_Flags,m_Stop
 POP_PSW
 	reti
-;------------------------------------------------------------------------------------------------
+
 OVF_T1:
 	reti
-;------------------------------------------------------------------------------------------------
+
 OVF_T0:
 	reti
-;------------------------------------------------------------------------------------------------
+
 SPI_INT:
 	reti
-;------------------------------------------------------------------------------------------------
+
 URXC_INT:
 	reti
-;------------------------------------------------------------------------------------------------
+
 UDRE_INT:
 	reti
-;------------------------------------------------------------------------------------------------
+
 UTXC_INT:
 	reti
-;------------------------------------------------------------------------------------------------
+
 ADCC_INT:
 	Push_All
+	in 	tmp,ADMUX
+	mov 	tmp2,tmp
+	cbi	ADMUX,MUX0
+	cbi	ADMUX,MUX1
+	cbi	ADMUX,MUX2
+	cbi	ADMUX,MUX3
+	cbr	tmp2,0b11111000
+	push	tmp2
+	inc 	tmp2
+	cpi 	tmp2,8
+	brne 	NumADCPortSet
+	clr	tmp2
+	sts S_NumPort,tmp2
 	
-		in tmp,ADMUX
-		mov tmp2,tmp
-		cbi	ADMUX,MUX0
-		cbi	ADMUX,MUX1
-		cbi	ADMUX,MUX2
-		cbi	ADMUX,MUX3
-		;
-		cbr	tmp2,0b11111000
-		push	tmp2
-		inc tmp2
-		
-		cpi tmp2,8
-		brne NumADCPortSet
-		clr	tmp2
-		sts S_NumPort,tmp2
 NumADCPortSet:
-		cbr	tmp,0b00000111
-	 	add tmp,tmp2
-		out  ADMUX,TMP
+	cbr	tmp,0b00000111
+	add 	tmp,tmp2
+	out  	ADMUX,TMP
 
 After_ADMUX_set:
-		pop	tmp	;Скопируем из стека номер канала АЦП
-		dec	tmp
-		cpi	tmp,0xff
-		brne	simply_push
-		ldi	tmp,7
+	pop	tmp	
+	dec	tmp
+	cpi	tmp,0xff
+	brne	simply_push
+	ldi	tmp,7
+	
 simply_push:
-		push	tmp	;Запомним в стеке параметр для "AddressDefine"
-;---------------
-LoadFromRam:	;Загрузка данных в операционные регистры для обработки из блока ОЗУ, соответствующего канала
-		rcall	AddressDefine
-		;
-		ld R_ConstCurrent1,X+
-		ld R_ConstCurrent2,X+
-		ld R_ConstCurrent3,X+
-		ld R_ConstAverageL,X+
-		ld R_ConstAverageH,X+
-		ld R_Counter,X+
-		ld R_DeltaMinL,X+
-		ld R_DeltaMinH,X+
-		ld R_DeltaMaxL,X+
-		ld R_DeltaMaxH,X+
-		ld R_SampleCount_L,X+		
-		ld R_SampleCount_H,X+
-		;----------------------------	
-		;Обработка данных			
-;		sbrs R_Flags,f_ConstsSet
-;		rjmp SampleCount
-		;
-SampleCount:
-		in   tmp,ADCL	   			; копируем данные с предыдущего (!) порта в тмп
-		in   tmp2,ADCH				; используем 10 разрядов данных АЦП.
-		clr xtmp		
-		add	 R_ConstCurrent1,tmp				; Накапливаем сумму отсчетов АЦП
-		adc	 R_ConstCurrent2,tmp2				; 
-		adc	 R_ConstCurrent3,xtmp
-		;
-		adiw R_SampleCount_L,1		    			;Считаем сколько выборок мы сложили.
-		ldi xtmp,low(C_NumberLoop-2)
-		ldi ytmp,high(C_NumberLoop-2)
-		cp	R_SampleCount_L,xtmp
-		cpc R_SampleCount_H,ytmp
-		brcs StoreToRam				;Если еще не накопили нужное количество отсчетов, то запоминаем,
-		sbr R_Flags, m_ConstsSet		;  то, что накопили и выходим.
-		clr  R_SampleCount_L
-		clr	 R_SampleCount_H
-		rcall MathOperations
-;		sbi		PORTB,LED		;Погасим LED STK
-;		rjmp  StoreToRam
-		;	
-;---------------
-StoreToRam:;Запись обработанных данных из операционных регистров в блок ОЗУ, соответствующего канала
-		pop	tmp	;Вспомним параметр не меняя стека (№ канала) 
-		sts S_NumPort,tmp
-		push	tmp
-		rcall	AddressDefine
-		st X+,R_ConstCurrent1
-		st X+,R_ConstCurrent2
-		st X+,R_ConstCurrent3
-		st X+,R_ConstAverageL
-		st X+,R_ConstAverageH
-		st X+,R_Counter
-		st X+,R_DeltaMinL
-		st X+,R_DeltaMinH
-		st X+,R_DeltaMaxL
-		st X+,R_DeltaMaxH
-		st X+,R_SampleCount_L		
-		st X+,R_SampleCount_H
-		;--------------------------------------
+	push	tmp	
 
-		in   tmp,ADCL	   			; копируем данные с предыдущего (!) порта в тмп
-		in   tmp2,ADCH				; используем 10 разрядов данных АЦП.
-		;
-		cp	 tmp, R_DeltaMinL		; Cравнение с Нижней границей
-		cpc  tmp2,R_DeltaMinH
-		brcs DetailIn				;Перейти если tmp(tmp2)<xtmp(ytmp)
-		;
-		cp	 tmp,R_DeltaMaxL		;Cравнение с Верхней границей
-		cpc  tmp2,R_DeltaMaxH
-		brcc DetailIn				;Перейти если tmp(tmp2)<xtmp(ytmp)
-		brne LED_OFF
+LoadFromRam:	
+	rcall	AddressDefine
+	ld 	R_ConstCurrent1,X+
+	ld 	R_ConstCurrent2,X+
+	ld 	R_ConstCurrent3,X+
+	ld 	R_ConstAverageL,X+
+	ld 	R_ConstAverageH,X+
+	ld 	R_Counter,X+
+	ld 	R_DeltaMinL,X+
+	ld 	R_DeltaMinH,X+
+	ld 	R_DeltaMaxL,X+
+	ld 	R_DeltaMaxH,X+
+	ld 	R_SampleCount_L,X+		
+	ld 	R_SampleCount_H,X+	
+	sbrs 	R_Flags,f_ConstsSet
+	rjmp 	SampleCount
+
+SampleCount:
+	in   	tmp,ADCL	   			
+	in   	tmp2,ADCH				
+	clr 	xtmp		
+	add	R_ConstCurrent1,tmp				
+	adc	R_ConstCurrent2,tmp2				
+	adc	R_ConstCurrent3,xtmp
+	adiw	R_SampleCount_L,1		    			
+	ldi 	xtmp,low(C_NumberLoop-2)
+	ldi 	ytmp,high(C_NumberLoop-2)
+	cp	R_SampleCount_L,xtmp
+	cpc	R_SampleCount_H,ytmp
+	brcs 	StoreToRam				
+	sbr 	R_Flags, m_ConstsSet		
+	clr  	R_SampleCount_L
+	clr	R _SampleCount_H
+	rcall 	MathOperations
+	sbi	PORTB,LED		
+	rjmp  StoreToRam
+
+StoreToRam:
+	pop	tmp	
+	sts 	S_NumPort,tmp
+	push	tmp
+	rcall	AddressDefine
+	st 	X+,R_ConstCurrent1
+	st 	X+,R_ConstCurrent2
+	st 	X+,R_ConstCurrent3
+	st 	X+,R_ConstAverageL
+	st 	X+,R_ConstAverageH
+	st 	X+,R_Counter
+	st 	X+,R_DeltaMinL
+	st 	X+,R_DeltaMinH
+	st 	X+,R_DeltaMaxL
+	st 	X+,R_DeltaMaxH
+	st 	X+,R_SampleCount_L		
+	st 	X+,R_SampleCount_H
+	
+	in   	tmp,ADCL	   			
+	in   	tmp2,ADCH				
+
+	cp	tmp, R_DeltaMinL		
+	cpc  	tmp2,R_DeltaMinH
+	brcs 	DetailIn				
+	cp	tmp,R_DeltaMaxL		
+	cpc  	tmp2,R_DeltaMaxH
+	brcc 	DetailIn				
+	brne 	LED_OFF
+	
 DetailIn:
-;		cbi PORTB,Const
-		rcall ChannelFlagIdentif_ON	
-		rjmp Exit_ADCC_Int
+	cbi 	PORTB,Const
+	rcall	ChannelFlagIdentif_ON	
+	rjmp 	Exit_ADCC_Int
+	
 LED_OFF:
-;		sbi PORTB,Const
-		rcall ChannelFlagIdentif_OFF
+	sbi 	PORTB,Const
+	rcall 	ChannelFlagIdentif_OFF
 		
 Exit_ADCC_Int:
-	pop	tmp		;Перед выходом, подчищаем стек !!!
+	pop	tmp		
 	Pop_All
 	reti
-;------------------------------------------------------------------------------------------------
+
 ERDY_INT:
 	reti
-;------------------------------------------------------------------------------------------------
+
 ACI_INT:
 	reti
-;------------------------------------------------------------------------------------------------
+
 TWI_INT:
 	reti
-;------------------------------------------------------------------------------------------------
+
 SPM_INT:
 	reti
-;------------------------------------------------------------------------------------------------
+
+	ldi 	xtmp,C_ShiftAddr
+	clr 	ytmp
+	clr 	ztmp
 	
-	
-		;-----------------------------------------------------------------
-		;SUBROUTINES
-AddressDefine:;Входные параметры (номер блока данных) TMP 
-			;Выходные параметры (адрес начала блока данных)  X 
-		ldi xtmp,C_ShiftAddr
-		clr ytmp
-		clr ztmp
 AddrComputation:
-		cp  ztmp,tmp
-		breq SummWithAddress
-		add ytmp,xtmp
-		inc ztmp
-		rjmp AddrComputation
+	cp  	ztmp,tmp
+	breq 	SummWithAddress
+	add 	ytmp,xtmp
+	inc 	ztmp
+	rjmp 	AddrComputation
+	
 SummWithAddress:
-		ldi XL,low(S_ConstCurrent1_0)
-		ldi XH,high(S_ConstCurrent1_0)
-		add XL,ytmp
-		clr tmp
-		adc XH,tmp
-		ret
+	ldi 	XL,low(S_ConstCurrent1_0)
+	ldi 	XH,high(S_ConstCurrent1_0)
+	add 	XL,ytmp
+	clr 	tmp
+	adc 	XH,tmp
+	ret
